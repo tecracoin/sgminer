@@ -2,6 +2,8 @@ cgminer
 cgminer.exe
 minerd
 minerd.exe
+sgminer
+sgminer.exe
 *.o
 *.lo
 *.bin

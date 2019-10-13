@@ -285,7 +285,7 @@ extern int opt_remoteconf_retry;
 extern int opt_remoteconf_wait;
 extern bool opt_remoteconf_usecache;
 
-#define MTP_L 64
+#define MTP_L 16
 
 enum alive {
 	LIFE_WELL,

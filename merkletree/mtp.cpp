@@ -19,7 +19,7 @@
 
 #define memcost 4*1024*1024
 static const unsigned int d_mtp = 1;
-static const uint8_t L = 64;
+static const uint8_t L = 16;
 static const unsigned int memory_cost = memcost;
 
 //extern void get_argon_block(int thr_id, void* d, uint32_t index){};
