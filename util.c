@@ -1848,14 +1848,14 @@ char *recv_line_bos(struct pool *pool)
 
 
 	len = pool->sockbuf_bossize;
-
+	uint32_t tip;
 		json_error_t boserror;
 		if (bos_sizeof(pool->sockbuf) < pool->sockbuf_bossize) {
 			//				MyObject2 = bos_deserialize(s + bos_sizeof(s), boserror);
 			MyObject2 = bos_deserialize(pool->sockbuf, &boserror);
 		}
 		else if (bos_sizeof(pool->sockbuf) > pool->sockbuf_bossize)
-			uint32_t tip=0;
+			tip=0;
 //			printf("missing something in message \n");
 		else
 			MyObject2 = bos_deserialize(pool->sockbuf, &boserror);
@@ -1947,14 +1947,14 @@ void recv_line_bos3(json_t* MyObject, struct pool *pool)
 
 
 	len = pool->sockbuf_bossize;
-
+	uint32_t tip;
 	json_error_t boserror;
 	if (bos_sizeof(pool->sockbuf) < pool->sockbuf_bossize) {
 		//				MyObject2 = bos_deserialize(s + bos_sizeof(s), boserror);
 		recode_message2(MyObject,bos_deserialize(pool->sockbuf, &boserror));
 	}
 	else if (bos_sizeof(pool->sockbuf) > pool->sockbuf_bossize)
-		uint32_t tip = 0;
+		tip = 0;
 //		printf("missing something in message \n");
 	else
 		recode_message2(MyObject, bos_deserialize(pool->sockbuf, &boserror));
@@ -2046,14 +2046,14 @@ json_t *recv_line_bos2(struct pool *pool)
 
 
 	len = pool->sockbuf_bossize;
-
+	uint32_t tip;
 	json_error_t boserror;
 	if (bos_sizeof(pool->sockbuf) < pool->sockbuf_bossize) {
 		//				MyObject2 = bos_deserialize(s + bos_sizeof(s), boserror);
 		recode_message2(MyObject,bos_deserialize(pool->sockbuf, &boserror));
 	}
 	else if (bos_sizeof(pool->sockbuf) > pool->sockbuf_bossize)
-		uint32_t tip = 0;
+		tip = 0;
 		//printf("missing something in message \n");
 	else
 		recode_message2(MyObject, bos_deserialize(pool->sockbuf, &boserror));
