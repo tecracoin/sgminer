@@ -910,7 +910,13 @@ int mtp_solver(int thr_id, cl_command_queue Queue, cl_mem clblock, cl_mem clbloc
 		char hex_tmp[64];
 
 		if (Y[L] > hashTarget) {
-
+/*
+			printf("Rejected. Nonce=%08x Hash:", TheNonce);
+			for (int n = 0; n < 32; n++) {
+				printf("%02x", ((unsigned char*)&Y[L])[n]);
+			}
+			printf("\n");
+*/
 		}
 		else {
 			for (int i = 0; i<32; i++)
@@ -920,7 +926,7 @@ int mtp_solver(int thr_id, cl_command_queue Queue, cl_mem clblock, cl_mem clbloc
 /*
 			printf("Found a solution. Nonce=%08x Hash:", TheNonce);
 			for (int n = 0; n < 32; n++) {
-				printf("%02x", ((unsigned char*)&Y[0])[n]);
+				printf("%02x", ((unsigned char*)&Y[L])[n]);
 			}
 			printf("\n");
 */

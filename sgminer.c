@@ -2026,7 +2026,7 @@ static bool __build_gbt_txns(struct pool *pool, json_t *res_val)
   if (unlikely(!pool->txn_hashes))
     quit(1, "Failed to calloc txn_hashes in __build_gbt_txns");
 
-  if (pool->algorithm.type == ALGO_EQUIHASH) {
+  if (pool->algorithm.type == ALGO_EQUIHASH || pool->algorithm.type == ALGO_MTP) {
     pool->coinbasetxn = (char*)realloc(pool->coinbasetxn, 1 << 22);  // reuse coinbasetxn
     size_t len = 0;
     for (i = 0; i < pool->gbt_txns; i++) {
@@ -2216,6 +2216,16 @@ static void gen_gbt_work(struct pool *pool, struct work *work)
     //set solutionsize - supposed to always be 1344
     add_var_int(work->data + offsetNonce + 32, 1344);
   }
+  else if (pool->algorithm.type == ALGO_MTP) {
+	  headerLen = 128;
+	  offsetTime = offsetMerkleRoot + 32;
+	  lenPadding = 48;
+	  nonceLen = 4;
+
+	  offsetBits = offsetTime + 4;
+	  offsetNonce = offsetBits + 4;
+	  offsetPadding = offsetNonce + nonceLen;
+  }
   else {
     headerLen = 128;
     offsetTime = offsetMerkleRoot + 32;
@@ -2331,7 +2341,19 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
     invalid = (!previousblockhash || !target || !coinbasevalue || !height || !longpollid || !version || !curtime || !bits);
   }
   else {
-    invalid = (!previousblockhash || !target || !coinbasetxn || !longpollid || !expires || !version || !curtime || !bits);
+	  height = json_integer_value(json_object_get(res_val, "height"));
+	  coinbasevalue = json_integer_value(json_object_get(res_val, "coinbasevalue"));
+	  printf("height = %d and coinbasevalue = %d\n",(uint32_t)height,(uint32_t)coinbasevalue);
+    invalid = (!previousblockhash || !target /*|| !coinbasetxn */|| !longpollid || !version || !curtime || !bits);
+
+printf("!previousblockhash = %d previousblockhash=%s\n",(!previousblockhash)?1:0, previousblockhash);
+printf("!target = %d target = %s\n", (!target) ? 1 : 0, target);
+printf("!coinbasetxn = %d coibasetxn = %s\n", (!coinbasetxn) ? 1 : 0, coinbasetxn);
+printf("!longpollid = %d longpollid = %s \n", (!longpollid) ? 1 : 0, longpollid);
+printf("!version = %d version = %08x \n", (!version) ? 1 : 0, version);
+printf("!curtime = %d curtime = %08x \n", (!curtime) ? 1 : 0, curtime);
+printf("!bits = %d bits = %08x\n", (!bits) ? 1 : 0, bits);
+
   }
 
   if (invalid) {
@@ -2359,7 +2381,7 @@ static bool gbt_decode(struct pool *pool, json_t *res_val)
 
   cg_wlock(&pool->gbt_lock);
 
-  if (pool->algorithm.type == ALGO_EQUIHASH) {
+  if (pool->algorithm.type == ALGO_EQUIHASH || pool->algorithm.type == ALGO_MTP) {
     pool->n2size = 8;
     if (!set_coinbasetxn(pool, height, coinbasevalue, coinbasefrvalue, coinbasefrscript))
       return false;
@@ -6440,6 +6462,7 @@ static void *stratum_sthread_bos(void *userdata)
 		uint64_t *nonce2_64;
 		struct work *work;
 		bool submitted = false;
+		bool ok_submit = false;
 
 		if (unlikely(pool->removed))
 			break;
@@ -6485,6 +6508,11 @@ static void *stratum_sthread_bos(void *userdata)
 			/* Give the stratum share a unique id */
 			sshare->id = swork_id++;
 			mutex_unlock(&sshare_lock);
+			
+			applog(LOG_INFO, "cached jobid = %s real swork jobid = %s  nonce = %08x", pool->mtp_cache.JobId, pool->swork.job_id,nonce); //first to get updated
+
+			if (strcmp(pool->mtp_cache.JobId, pool->swork.job_id) == 0)  // submit share only if the jobid hasn't changed in between
+															ok_submit = true;
 
 			unsigned char* hexjob_id = (unsigned char*)malloc(4);
 			hex2bin(hexjob_id, work->job_id, 8);
@@ -6524,12 +6552,12 @@ static void *stratum_sthread_bos(void *userdata)
 		/* Try resubmitting for up to 2 minutes if we fail to submit
 		* once and the stratum pool nonce1 still matches suggesting
 		* we may be able to resume. */
-		while (time(NULL) < sshare->sshare_time + 120) {
+		while ((time(NULL) < sshare->sshare_time + 120 ) && ok_submit ) {
 			bool sessionid_match;
 
 			mutex_lock(&sshare_lock);
 			if (prev_nonce == nonce) {
-				applog(LOG_DEBUG, "***************resubmitting a nonce which has been submitted nonce %08x prev_nonce %08x", prev_nonce, nonce);
+				applog(LOG_INFO, "***************resubmitting a nonce which has been submitted nonce %08x prev_nonce %08x", prev_nonce, nonce);
 				submitted = true;
 				mutex_unlock(&sshare_lock);
 				break;
@@ -6540,12 +6568,12 @@ static void *stratum_sthread_bos(void *userdata)
 				if (serialized != NULL)
 					bos_free(serialized);
 				if (pool_tclear(pool, &pool->submit_fail))
-					applog(LOG_WARNING, "%s communication resumed, submitting work", get_pool_name(pool));
+					applog(LOG_INFO, "%s communication resumed, submitting work", get_pool_name(pool));
 
 				sshare->sshare_sent = time(NULL);
 				ssdiff = sshare->sshare_sent - sshare->sshare_time;
 				if (opt_debug || ssdiff > 0) {
-					applog(LOG_WARNING, "Pool %d stratum share submission lag time %d seconds",
+					applog(LOG_INFO, "Pool %d stratum share submission lag time %d seconds",
 						pool->pool_no, ssdiff);
 				}
 			
@@ -6553,7 +6581,7 @@ static void *stratum_sthread_bos(void *userdata)
 				pool->sshares++;
 				mutex_unlock(&sshare_lock);
                 prev_nonce = nonce;  // make sure a nonce which has been already submitted is not submitted a second time
-				applog(LOG_DEBUG, "Successfully submitted, adding to stratum_shares db");
+				applog(LOG_INFO, "Successfully submitted, adding to stratum_shares db");
 				submitted = true;
 				break;
 			}
@@ -6562,13 +6590,13 @@ static void *stratum_sthread_bos(void *userdata)
 			}
 
 			if (!pool_tset(pool, &pool->submit_fail) && cnx_needed(pool)) {
-				applog(LOG_DEBUG, "%s stratum share submission failure", get_pool_name(pool));
+				applog(LOG_INFO, "%s stratum share submission failure", get_pool_name(pool));
 				total_ro++;
 				pool->remotefail_occasions++;
 			}
 
 			if (opt_lowmem) {
-				applog(LOG_DEBUG, "Lowmem option prevents resubmitting stratum share");
+				applog(LOG_INFO, "Lowmem option prevents resubmitting stratum share");
 				break;
 			}
 
@@ -6577,7 +6605,7 @@ static void *stratum_sthread_bos(void *userdata)
 			cg_runlock(&pool->data_lock);
 
 			if (!sessionid_match) {
-				applog(LOG_DEBUG, "No matching session id for resubmitting stratum share");
+				applog(LOG_INFO, "No matching session id for resubmitting stratum share");
 				break;
 			}
 			/* Retry every 5 seconds */
@@ -6585,7 +6613,7 @@ static void *stratum_sthread_bos(void *userdata)
 		}
 
 		if (unlikely(!submitted)) {
-			applog(LOG_DEBUG, "Failed to submit stratum share, discarding");
+			applog(LOG_INFO, "Failed to submit stratum share, discarding");
 			free_work(work);
 			free(sshare);
 			pool->stale_shares++;
@@ -6673,7 +6701,7 @@ retry_stratum:
 
     if (!init) {
 	  bool ret = false;
-//		printf("pool active 1\n");
+		printf("pool active 1\n");
 	if (pool->algorithm.type == ALGO_MTP)
        ret = initiate_stratum_bos(pool) && (!pool->extranonce_subscribe || subscribe_extranonce(pool)) && auth_stratum_bos(pool);
 	else 
@@ -6707,7 +6735,7 @@ retry_stratum:
 
   if (!pool->probed) {
     char *_gbt_req = gbt_req;
-    if (pool->algorithm.type == ALGO_EQUIHASH)
+    if (pool->algorithm.type == ALGO_EQUIHASH || pool->algorithm.type == ALGO_MTP  )
       _gbt_req = gbt_req_equihash;
     applog(LOG_DEBUG, "Probing for GBT support");
     val = json_rpc_call(curl, curl_err_str, pool->rpc_url, pool->rpc_userpass,
@@ -6740,7 +6768,7 @@ retry_stratum:
       /* Only use GBT if it supports coinbase append and
        * submit coinbase */
 
-      if ((append && submit) || pool->algorithm.type == ALGO_EQUIHASH) {
+      if ((append && submit) || pool->algorithm.type == ALGO_EQUIHASH || pool->algorithm.type == ALGO_MTP) {
         pool->has_gbt = true;
         pool->rpc_req = _gbt_req;
       }
@@ -10085,7 +10113,7 @@ int main(int argc, char *argv[])
         quit(1, "Failed to malloc userpass");
 
       char *point_chr = strchr(pool->rpc_user, '.');
-      if (pool->algorithm.type == ALGO_EQUIHASH && point_chr != NULL) {
+      if ((pool->algorithm.type == ALGO_EQUIHASH || pool->algorithm.type == ALGO_MTP) && point_chr != NULL) {
         *point_chr = '\0';
         snprintf(pool->rpc_userpass, siz, "%s:%s", pool->rpc_user, pool->rpc_pass);
         *point_chr = '.';

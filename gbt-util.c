@@ -142,6 +142,7 @@ bool address_decode(uint8_t* pub_key_hash, char* wallet_address, int offset)
     return false;
   }
   // is length valid?
+printf("key length = %d \n", wallet_address_raw_size);
   if (wallet_address_raw_size != 24 + offset)
   {
     applog(LOG_WARNING, "Decoding address %s yields invalid number of bytes", wallet_address);
@@ -229,7 +230,7 @@ bool set_coinbasetxn(struct pool *pool, uint32_t height, uint64_t coinbasevalue,
   int offset = 0;
   int height_size = add_block_height(NULL, height);
   uint8_t raw_address[20];
-  if (!address_decode(raw_address, strchr(pool->rpc_user, '.') + 1, 2))  // decode zcash address
+  if (!address_decode(raw_address, strchr(pool->rpc_user, '.') + 1, (pool->algorithm.type == ALGO_MTP)? 1:2))  // decode zcash address
     return false;
   pool->coinbase = (unsigned char*)realloc(pool->coinbase, 512 + pool->n2size);  // alloc some extra space
 

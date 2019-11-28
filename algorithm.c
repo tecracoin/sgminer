@@ -1187,10 +1187,12 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 	cl_kernel *kernel;
 	unsigned int num = 0;
 	cl_int status = 0;
-	cl_uint le_target;
+	cl_ulong le_target;
 	cl_uint HighNonce, Isolate = UINT32_MAX;
- 
-	le_target = (cl_uint)le32toh(((uint32_t *)blk->work->/*device_*/target)[7]);
+
+	le_target = (cl_ulong)le64toh(((uint64_t *)blk->work->/*device_*/target)[3]);
+//	le_target = (cl_uint)le32toh(((uint32_t *)blk->work->/*device_*/target)[7]);
+
     uint32_t ptarget[8];
 	 for (int i=0;i<8;i++) ptarget[i] = le32toh(((uint32_t *)blk->work->/*device_*/target)[i]);
 
@@ -1206,19 +1208,24 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 	mtp_gpu_t *buffer= &blk->work->thr->cgpu->mtp_buffer;
 	
 //	printf("coming in queue mtp kernel prev_job_id %s job_id %s\n", blk->work->prev_job_id, blk->work->job_id);
-	
+	unsigned char* hexjob_id = (unsigned char*)malloc(4);
+	hex2bin(hexjob_id, pool->swork.job_id, 8);
+	uint32_t TheJobId = ((uint32_t*)hexjob_id)[0];
+	free(hexjob_id);
 	uint32_t test = 1;
 
-	if (buffer->prev_job_id != NULL) {
-		test = strcmp(buffer->prev_job_id, pool->swork.job_id);
+	if (buffer->prev_job_id != 0) {
+		test = (buffer->prev_job_id==TheJobId);
 	}
 //	printf("coming into initialization   test result = %d\n",test);
 
-	if (test != 0)
-	{  // do initialization
-/*
-		printf("*********** INIT MTP**************\n");
 
+
+	if (buffer->prev_job_id != TheJobId)
+	{  // do initialization
+
+		applog(LOG_INFO,"*********** INIT MTP**************  prev_job_id = %08x  current job_id = %08x ", buffer->prev_job_id, TheJobId);
+/*
 		if (buffer->prev_job_id == NULL) {
 		mtp = (mtp_cache_t*)malloc(sizeof(mtp_cache_t));
 		}
@@ -1239,7 +1246,7 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 			
 			
 ////////////////////////////////////////////////
-		if (buffer->prev_job_id!=NULL) {
+		if (buffer->prev_job_id!=0) {
 
 	//		free_memory(&mtp->context, (unsigned char *)mtp->instance.memory, mtp->instance.memory_argon_blocks, sizeof(argon_block));
 
@@ -1424,8 +1431,9 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		mtp->ordered_tree = call_new_MerkleTree(mtp->dx, true);
 
 
-		buffer->prev_job_id = pool->swork.job_id;
-
+		buffer->prev_job_id = TheJobId;
+//		memcpy(buffer->prev_job_id, pool->swork.job_id,8);
+//		strcpy(buffer->prev_job_id, pool->swork.job_id);
 		call_MerkleTree_getRoot(mtp->ordered_tree, mtp->TheMerkleRoot);
 /*
 		MerkleTree::Buffer root = mtp->ordered_tree->getRoot();
@@ -1435,7 +1443,7 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		
 	}
 
-
+	
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 //// hashing here
@@ -1476,19 +1484,53 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		applog(LOG_ERR, "Error reading Solution.", status1);
 	}
 	buffer->StartNonce += rawint;
+
+	hexjob_id = (unsigned char*)malloc(4);
+	hex2bin(hexjob_id, pool->swork.job_id, 8);
+	TheJobId = ((uint32_t*)hexjob_id)[0];
+	free(hexjob_id);
+
+
+		if (buffer->prev_job_id != TheJobId && Solution[0xff]) {
+		applog(LOG_INFO,"1st Check +++++++++++++++++job id has changed don't bother continue %08x %08x ", buffer->prev_job_id, TheJobId);
+		Solution[0xff] = 0;  // clean shit and move on
+		status1 = clEnqueueWriteBuffer(clState->commandQueue, clState->outputBuffer, CL_TRUE, 0, buffersize, Solution, 0, NULL, NULL);
+		return status;
+		}
+
 	if (Solution[0xff]) {
 //		uint256 TheUint256Target[1];
 //		TheUint256Target[0] = ((uint256*)ptarget)[0];
 		unsigned char mtpHashValue[32];
 		argon_blockS nBlockMTP[MTP_L * 2] = { 0 };
 		unsigned char nProofMTP[MTP_L * 3 * 353] = { 0 };
-//		printf("MTP Found a Nonce = %08x\n",Solution[0]);
 
-		
+	applog(LOG_INFO, "+++++++++++++++++job id for solution  %08x %08x ", buffer->prev_job_id, TheJobId);
+	if (Solution[0xff]>1)
+		applog(LOG_INFO, "XXXXXXXXXXXXXXXXXX    we have %d solutions \n",Solution[0xff]);
+
+
 
 		uint32_t is_sol = mtp_solver(0, clState->commandQueue, buffer->hblock, buffer->hblock2, Solution[0],
 		&mtp->instance, nBlockMTP, nProofMTP, mtp->TheMerkleRoot, mtpHashValue, mtp->ordered_tree, endiandata, (uint256*)ptarget);
+
+		hexjob_id = (unsigned char*)malloc(4);
+		hex2bin(hexjob_id, pool->swork.job_id, 8);
+		TheJobId = ((uint32_t*)hexjob_id)[0];
+		free(hexjob_id);
+
+		if (buffer->prev_job_id != TheJobId ) {
+			applog(LOG_INFO, "2nd Check +++++++++++++++++job id has changed don't bother continue %08x %08x ", buffer->prev_job_id, TheJobId);
+			Solution[0xff] = 0;  // clean shit and move on
+			status1 = clEnqueueWriteBuffer(clState->commandQueue, clState->outputBuffer, CL_TRUE, 0, buffersize, Solution, 0, NULL, NULL);
+			return status;
+		}
+
 		if (is_sol==1) {
+		
+//		char* truc2 = (char*)&pool->mtp_cache.JobId;
+//		truc2 = pool->swork.job_id;
+		memcpy(pool->mtp_cache.JobId, pool->swork.job_id, 8);
 		memcpy(pool->mtp_cache.mtpPOW.MerkleRoot, mtp->TheMerkleRoot,16);
 		for (int j = 0; j<(MTP_L * 2); j++)
 			for (int i = 0; i<128; i++)
@@ -1499,9 +1541,10 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		((uint32_t*)blk->work->data)[19] = Solution[0];
         memcpy(blk->work->hash, mtpHashValue,32);
 		Solution[0xff]=1; // avoid duplicate ?
-//			printf("*************************************************************************************Found a solution\n");
+		applog(LOG_INFO,"********************************Found a solution = %08x \n",Solution[0]);
 		} 
 		else {
+			applog(LOG_INFO,"*************************************************************************************Rejected\n");
 			Solution[0xff]=0;
 			hw_errors++;
 			blk->work->thr->cgpu->hw_errors++;
@@ -1548,7 +1591,7 @@ static cl_int queue_mtp_kernel_new(_clState *clState, dev_blk_ctx *blk, __maybe_
 	uint32_t test = 1;
 
 	if (buffer->prev_job_id != NULL) {
-		test = strcmp(buffer->prev_job_id, pool->swork.job_id);
+//		test = strcmp(buffer->prev_job_id, pool->swork.job_id);
 	}
 	//	printf("coming into initialization   test result = %d\n",test);
 
@@ -1803,7 +1846,7 @@ for (int i = 0; i<4; i++) {
 		mtp->ordered_tree = call_new_MerkleTree(mtp->dx, true);
 
 
-		buffer->prev_job_id = pool->swork.job_id;
+		buffer->prev_job_id = 0; //pool->swork.job_id;
 
 		call_MerkleTree_getRoot(mtp->ordered_tree, mtp->TheMerkleRoot);
 		/*
@@ -1928,7 +1971,7 @@ static cl_int queue_mtp_kernel2(_clState *clState, dev_blk_ctx *blk, __maybe_unu
 	uint32_t test = 1;
 
 	if (buffer->prev_job_id != NULL) {
-		test = strcmp(buffer->prev_job_id, pool->swork.job_id);
+//		test = strcmp(buffer->prev_job_id, pool->swork.job_id);
 	}
 	//	printf("coming into initialization   test result = %d\n",test);
 
@@ -2113,7 +2156,7 @@ static cl_int queue_mtp_kernel2(_clState *clState, dev_blk_ctx *blk, __maybe_unu
 		mtp->ordered_tree = call_new_MerkleTree(mtp->dx, true);
 
 
-		buffer->prev_job_id = pool->swork.job_id;
+		buffer->prev_job_id = 0; //pool->swork.job_id;
 
 		call_MerkleTree_getRoot(mtp->ordered_tree, mtp->TheMerkleRoot);
 		/*

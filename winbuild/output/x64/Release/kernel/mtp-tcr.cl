@@ -307,7 +307,7 @@ static unsigned warp_id()
 
 __attribute__((reqd_work_group_size(TPB_MTP, 1, 1)))
 __kernel void mtp_yloop(__global unsigned int* pData, __global const ulong8  * /*__restrict__*/ DBlock, __global const ulong8  * /*__restrict__*/ DBlock2,
-	__global uint4 * Elements, __global uint32_t * __restrict__ SmallestNonce, uint pTarget)
+	__global uint4 * Elements, __global uint32_t * __restrict__ SmallestNonce, ulong pTarget)
 {
 #define G(r,i,a,b,c,d) \
    { \
@@ -513,11 +513,12 @@ __kernel void mtp_yloop(__global unsigned int* pData, __global const ulong8  * /
 
 	}
 
-	if (as_uint8(YLocal).s7 <= pTarget)
+	if (as_ulong4(YLocal).s3 <= pTarget)
 	{
-
 		SmallestNonce[atomic_inc(SmallestNonce + 0xFF)] = NonceIterator;
 	}
+
+
 #undef G
 #undef ROUND
 }
@@ -527,7 +528,7 @@ __kernel void mtp_yloop(__global unsigned int* pData, __global const ulong8  * /
 
 __attribute__((reqd_work_group_size(TPB_MTP, 1, 1)))
 __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8  * /*__restrict__*/ DBlock, __global const ulong8  * /*__restrict__*/ DBlock2,
-	__global uint4 * Elements, __global uint32_t * __restrict__ SmallestNonce, uint pTarget)
+	__global uint4 * Elements, __global uint32_t * __restrict__ SmallestNonce, ulong pTarget)
 {
 #define G(r,i,a,b,c,d) \
    { \
@@ -662,7 +663,7 @@ __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8 
 		TheIndex[0] = sub_group_broadcast((as_uint8(YLocal).s0 & 0x3FFFFF), 0 + SUBDIV * (get_sub_group_local_id() / SUBDIV));
 		TheIndex[1] = sub_group_broadcast((as_uint8(YLocal).s0 & 0x3FFFFF), 1 + SUBDIV * (get_sub_group_local_id() / SUBDIV));
 #endif
-
+		sub_group_barrier(CLK_LOCAL_MEM_FENCE);
 		#pragma unroll 
 		for (int i = 0; i < 9; i++) {
 			int last = (i == 8);
@@ -684,22 +685,22 @@ __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8 
 					far[warp][lane%SUBDIV + (t + SUBDIV*(lane / SUBDIV)) * (SUBDIV)] = farP[lane%SUBDIV];
 					//					far[warp][(t + SUBDIV*(lane / SUBDIV))][lane%SUBDIV] = farP[lane%SUBDIV];
 				}
-//				sub_group_barrier(CLK_LOCAL_MEM_FENCE);
+				sub_group_barrier(CLK_LOCAL_MEM_FENCE);
 		}
 
 
-
+/*
 			vstore4(last ? (ulong4)(0, 0, 0, 0) : far[warp][indice].lo     , 1, m);
 			vstore4(last ? (ulong4)(0, 0, 0, 0) : far[warp][indice].hi     , 2, m);
 			vstore4(last ? (ulong4)(0, 0, 0, 0) : far[warp][1 + indice].lo , 3, m);
-/*
+
 			vstore8(DataTmp, 0, v);
 
-
+*/
 						((ulong4*)m)[1] = (last) ? (ulong4)(0, 0, 0, 0) : far[warp][indice].lo;
 						((ulong4*)m)[2] = (last) ? (ulong4)(0, 0, 0, 0) : far[warp][indice].hi;
 						((ulong4*)m)[3] = (last) ? (ulong4)(0, 0, 0, 0) : far[warp][1 + indice].lo;
-*/
+
 
 			((ulong8*)v)[0] = DataTmp;
 			v[8] = blakeIV_[0];
@@ -719,8 +720,8 @@ __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8 
 
 
 			//if (last) continue;
-//			((ulong4*)m)[0] = /*(last) ? (ulong4)(0, 0, 0, 0) :*/ far[warp][1+ indice].hi;
-			vstore4(far[warp][1 + indice].hi, 0, m);
+			((ulong4*)m)[0] = /*(last) ? (ulong4)(0, 0, 0, 0) :*/ far[warp][1+ indice].hi;
+//			vstore4(far[warp][1 + indice].hi, 0, m);
 			/////////////////////////////////////////////////////////////////////////////////////////////////////
 		}
 
@@ -730,9 +731,8 @@ __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8 
 
 	}
 
-	if (as_uint8(YLocal).s7 <= pTarget)
+	if (as_ulong4(YLocal).s3 <= pTarget)
 	{
-
 		SmallestNonce[atomic_inc(SmallestNonce + 0xFF)] = NonceIterator;
 	}
 #undef G

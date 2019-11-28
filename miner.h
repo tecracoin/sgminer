@@ -556,7 +556,7 @@ typedef struct mtp {
 
 struct _mtp_gpu_t;
 typedef struct _mtp_cache_t {
-	uint32_t JobId;
+	char JobId[8];
 	uint64_t XtraNonce2;
 	MerkleTree *ordered_tree;
 	unsigned char TheMerkleRoot[16];
@@ -570,7 +570,7 @@ typedef struct _mtp_cache_t {
 
 typedef struct _mtp_gpu_t {
 	cglock_t lock;
-	char* prev_job_id;
+	uint32_t prev_job_id;
 	cl_mem hblock;
 	cl_mem hblock2;
 	cl_mem blockheader;
