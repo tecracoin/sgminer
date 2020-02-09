@@ -1063,5 +1063,7 @@ __kernel void mtp_fc(uint32_t threads, __global uint4  *  __restrict__ DBlock, _
 			a[thread * 2 + i] = as_uint2(DataTmp[i]);
 
 	}
+	if (thread == 0)
+		printf(" ");
 
 }
