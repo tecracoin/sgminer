@@ -1373,6 +1373,7 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating the MTP buffers kernel 1.", status);
 		}
+		clFlush(clState->commandQueue);
 		num = 0;
 		kernel = &clState->mtp_1;
 
@@ -1382,10 +1383,11 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		CL_SET_ARG(buffer->blockheader);
 		CL_SET_ARG(slice);
 		status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_1, 1, NULL, &Global, &Local, 0, NULL, NULL);
-//		clFinish(clState->commandQueue);
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating the MTP buffers kernel 2.", status);
 		}
+		clFlush(clState->commandQueue);
+
 		num = 0;
 		kernel = &clState->mtp_2;
 		slice = 2;
@@ -1394,10 +1396,11 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		CL_SET_ARG(buffer->blockheader);
 		CL_SET_ARG(slice);
 		status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_2, 1, NULL, &Global, &Local, 0, NULL, NULL);
-//		clFinish(clState->commandQueue);
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating the MTP buffers kernel 3.", status);
 		}
+		clFlush(clState->commandQueue);
+
 		num = 0;
 		kernel = &clState->mtp_3;
 		slice = 3;
@@ -1406,13 +1409,13 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		CL_SET_ARG(buffer->blockheader);
 		CL_SET_ARG(slice);
 		status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_3, 1, NULL, &Global, &Local, 0, NULL, NULL);
-//		clFinish(clState->commandQueue);
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating the MTP buffers kernel 4.", status);
 		}
+		clFlush(clState->commandQueue);
+
 		num = 0;
 		kernel = &clState->mtp_fc;
-
 		slice = 4194304;
 		CL_SET_ARG(slice);
 		CL_SET_ARG(buffer->hblock);
@@ -1424,10 +1427,15 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating mtp_fc kernel", status);
 		}
-		size_t mtp_tree_size = 2 * 1048576 * 4 * sizeof(uint64_t);
-		clEnqueueReadBuffer(clState->commandQueue, buffer->tree, CL_TRUE, 0, mtp_tree_size, mtp->dx, 0, NULL, NULL);
+		clFlush(clState->commandQueue);
 
-	//	mtp->ordered_tree = new MerkleTree(mtp->dx, true);
+
+		size_t mtp_tree_size = 2 * 1048576 * 4 * sizeof(uint64_t);
+		status |= clEnqueueReadBuffer(clState->commandQueue, buffer->tree, CL_TRUE, 0, mtp_tree_size, mtp->dx, 0, NULL, NULL);
+		if (status != CL_SUCCESS) {
+			applog(LOG_ERR, "Error %d while reading buffer->tree kernel", status);
+		}
+
 		mtp->ordered_tree = call_new_MerkleTree(mtp->dx, true);
 
 
@@ -1435,6 +1443,8 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 //		memcpy(buffer->prev_job_id, pool->swork.job_id,8);
 //		strcpy(buffer->prev_job_id, pool->swork.job_id);
 		call_MerkleTree_getRoot(mtp->ordered_tree, mtp->TheMerkleRoot);
+
+
 /*
 		MerkleTree::Buffer root = mtp->ordered_tree->getRoot();
 		std::copy(root.begin(), root.end(), mtp->TheMerkleRoot);
@@ -1453,10 +1463,13 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 	if (status1 != CL_SUCCESS) {
 		applog(LOG_ERR, "Error %d with writing to root buffer.", status1);
 	}
-	status1 = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, true, 0, 20 * sizeof(uint32_t), (unsigned char*)endiandata, 0, NULL, NULL);
+
+
+	status1 = clEnqueueWriteBuffer(clState->commandQueue, clState->CLbuffer0, CL_TRUE, 0, 20 * sizeof(uint32_t), (unsigned char*)endiandata, 0, NULL, NULL);
 	if (status1 != CL_SUCCESS) {
 		applog(LOG_ERR, "Error %d with writing to CLbuffer0.", status1);
 	}
+
 
 	size_t p_global_work_offset = buffer->StartNonce;
 	uint32_t rawint = 2 << (blk->work->thr->cgpu->intensity - 1);
@@ -1473,12 +1486,13 @@ static cl_int queue_mtp_kernel(_clState *clState, dev_blk_ctx *blk, __maybe_unus
 	CL_SET_ARG(clState->outputBuffer);
 	CL_SET_ARG(le_target);
 	uint32_t Solution[256];
-    
+
+
 	status1 = clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_yloop, 1, &p_global_work_offset, &Global2, &Local2, 0, NULL, NULL);
 	if (status1 != CL_SUCCESS) {
 		applog(LOG_ERR, "Error %d with kernel mtp_yloop.", status1);
 	}
-	
+
 	status1 = clEnqueueReadBuffer(clState->commandQueue, clState->outputBuffer, CL_TRUE, 0, buffersize, Solution, 0, NULL, NULL);
 	if (status1 != CL_SUCCESS) {
 		applog(LOG_ERR, "Error reading Solution.", status1);
@@ -1834,11 +1848,18 @@ for (int i = 0; i<4; i++) {
 		CL_SET_ARG(buffer->hblock2);
 		CL_SET_ARG(buffer->tree);
 		size_t Global2 = 4194304;
-		size_t Local2 = 256;
-		status |= clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_fc, 1, NULL, &Global2, &Local2, 0, NULL, NULL);
+		size_t Local2 = 32;
+
+//		cl_event *event_list;
+//		event_list = new cl_event[1];
+		status = clEnqueueNDRangeKernel(clState->commandQueue, clState->mtp_fc, 1, NULL, &Global2, &Local2, 0, NULL, NULL);
+//		status = clWaitForEvents(1,event_list);
 		if (status != CL_SUCCESS) {
 			applog(LOG_ERR, "Error %d while creating mtp_fc kernel", status);
 		}
+//		clFinish(clState->commandQueue);
+		
+		printf("****end of wait\n");
 		size_t mtp_tree_size = 2 * 1048576 * 4 * sizeof(uint64_t);
 		clEnqueueReadBuffer(clState->commandQueue, buffer->tree, CL_TRUE, 0, mtp_tree_size, mtp->dx, 0, NULL, NULL);
 

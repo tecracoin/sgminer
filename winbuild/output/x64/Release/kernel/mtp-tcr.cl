@@ -119,11 +119,11 @@ __constant static const uchar blake2b_sigma[12][16] =
 
 
 #if NVIDIA_GPU == 1
-static inline uint64_t ROTR64X(const uint64_t x2, const int y) {
+static /* inline */ uint64_t ROTR64X(const uint64_t x2, const int y) {
 	return rotate(x2, (ulong)(64 - y));
 }
 #else 
-static inline uint64_t ROTR64X(const uint64_t x2, const int y) {
+static /* inline */ uint64_t ROTR64X(const uint64_t x2, const int y) {
 	uint2 x = as_uint2(x2);
 	if (y < 32) return(as_ulong(amd_bitalign(x.s10, x, y)));
 	else return(as_ulong(amd_bitalign(x, x.s10, (y - 32))));
@@ -133,7 +133,7 @@ static inline uint64_t ROTR64X(const uint64_t x2, const int y) {
 
 
 
-static inline uint2 ROR2(uint2 v, unsigned a) {
+static /* inline */ uint2 ROR2(uint2 v, unsigned a) {
 	uint2 result;
 	unsigned n = 64 - a;
 	if (n == 32) { return (uint2)(v.y, v.x); }
@@ -147,13 +147,13 @@ static inline uint2 ROR2(uint2 v, unsigned a) {
 	}
 	return result;
 }
-static inline uint2 ror2l(uint2 v, unsigned a) {
+static /* inline */ uint2 ror2l(uint2 v, unsigned a) {
 	uint2 result;
 	result.y = ((v.x << (32 - a)) | (v.y >> (a)));
 	result.x = ((v.y << (32 - a)) | (v.x >> (a)));
 	return result;
 }
-static inline uint2 ror2r(uint2 v, unsigned a) {
+static /* inline */ uint2 ror2r(uint2 v, unsigned a) {
 	uint2 result;
 	result.y = ((v.y << (64 - a)) | (v.x >> (a - 32)));
 	result.x = ((v.x << (64 - a)) | (v.y >> (a - 32)));
@@ -161,7 +161,7 @@ static inline uint2 ror2r(uint2 v, unsigned a) {
 }
 
 
-static inline uint2 eorswap32(uint2 u, uint2 v)
+static /* inline */ uint2 eorswap32(uint2 u, uint2 v)
 {
 	uint2 result;
 	result.y = u.x ^ v.x;
@@ -169,7 +169,7 @@ static inline uint2 eorswap32(uint2 u, uint2 v)
 	return result;
 }
 
-static inline uint64_t eorswap64(uint64_t u, uint64_t v)
+static /* inline */ uint64_t eorswap64(uint64_t u, uint64_t v)
 {
 	return ROTR64X(u^v, 32);
 }
@@ -190,7 +190,7 @@ static inline uint64_t eorswap64(uint64_t u, uint64_t v)
 
 
 
-static inline  int blake2b_compress4xv2(uint64_t *hash, const uint64_t *hzcash, const uint64_t *block, const uint32_t len, int last)
+static /* inline */  int blake2b_compress4xv2(uint64_t *hash, const uint64_t *hzcash, const uint64_t *block, const uint32_t len, int last)
 {
 	uint64_t m[16];
 	uint64_t v[16];
@@ -741,7 +741,7 @@ __kernel void mtp_yloop_old(__global unsigned int* pData, __global const ulong8 
 
 
 
-static inline  uint32_t index_alpha(const uint32_t passs, const uint32_t slice, const uint32_t index,
+static /* inline */  uint32_t index_alpha(const uint32_t passs, const uint32_t slice, const uint32_t index,
 	uint32_t pseudo_rand,
 	int same_lane, const uint32_t ss, const uint32_t ss1) {
 
@@ -795,9 +795,9 @@ struct mem_blk {
 };
 
 
-/*__device__ __forceinline__*/ // void copy_block(__local struct mem_blk *dst, __local const struct mem_blk *src) 
+/*__device__ __force_inline__*/ // void copy_block(__local struct mem_blk *dst, __local const struct mem_blk *src) 
 
-/*__device__ __forceinline__*/ uint64_t fBlaMka(uint64_t x, uint64_t y) {
+/*__device__ __force_inline__*/ uint64_t fBlaMka(uint64_t x, uint64_t y) {
 	//	const uint64_t m = 0xFFFFFFFFUL;
 	//	const uint64_t xy = ((uint64_t)_LODWORD(x) * (uint64_t)_LODWORD(y));
 	const uint64_t xy = (ulong)((uint)(x & 0xFFFFFFFFUL)) * (ulong)((uint)(y & 0xFFFFFFFFUL));
@@ -806,7 +806,7 @@ struct mem_blk {
 
 
 
-static inline void fill_block_withIndex(__global const struct mem_blk *prev_block, __global const struct mem_blk *ref_block,
+static /* inline */ void fill_block_withIndex(__global const struct mem_blk *prev_block, __global const struct mem_blk *ref_block,
 	__global struct mem_blk *next_block, int with_xor, uint32_t block_header[8], uint32_t index) {
 
 	__local struct mem_blk blockR;
@@ -1012,9 +1012,14 @@ __kernel void mtp_i(__global uint4  *  DBlock, __global uint4  *  DBlock2, __glo
 
 
 __attribute__((reqd_work_group_size(256, 1, 1)))
-__kernel void mtp_fc(uint32_t threads, __global uint4  *  __restrict__ DBlock, __global uint4  *  __restrict__ DBlock2, __global uint2 *a) {
+__kernel void mtp_fc(uint32_t threads, __global uint4  *  restrict DBlock, __global uint4  *  restrict DBlock2, __global uint2 * restrict ab) {
+
+
 
 	uint32_t thread = get_global_id(0);
+//if (thread==0)
+//printf("coming here mtp_fc \n");
+
 	const uint32_t half_memcost = 2 * 1024 * 1024;
 	const uint64_t blakeInit2_64[8] =
 	{
@@ -1032,10 +1037,7 @@ __kernel void mtp_fc(uint32_t threads, __global uint4  *  __restrict__ DBlock, _
 
 	if (thread < threads) {
 
-		__global const uint4 *    __restrict__ GBlock = (thread<half_memcost) ? &DBlock[thread * 64] : &DBlock2[(thread - half_memcost) * 64];
-
-
-		//		__global const uint4 *    __restrict__ GBlock = &DBlock[0];
+		__global const uint4 * restrict  GBlock = (thread<half_memcost) ? &DBlock[thread * 64] : &DBlock2[(thread - half_memcost) * 64];
 
 		uint32_t len = 0;
 		ulong DataTmp[8];
@@ -1044,26 +1046,23 @@ __kernel void mtp_fc(uint32_t threads, __global uint4  *  __restrict__ DBlock, _
 
 		#pragma unroll
 		for (int i = 0; i < 8; i++) {
-			//              len += (i&1!=0)? 32:128;
+			
 			len += 128;
 			uint16 DataChunk[2];
-			DataChunk[0].lo = ((__global uint8*)GBlock)[4 * i + 0];
-			DataChunk[0].hi = ((__global uint8*)GBlock)[4 * i + 1];
-			DataChunk[1].lo = ((__global uint8*)GBlock)[4 * i + 2];
-			DataChunk[1].hi = ((__global uint8*)GBlock)[4 * i + 3];
+			DataChunk[0].lo = ((__global const uint8* restrict)GBlock)[4 * i + 0];
+			DataChunk[0].hi = ((__global const uint8* restrict)GBlock)[4 * i + 1];
+			DataChunk[1].lo = ((__global const uint8* restrict)GBlock)[4 * i + 2];
+			DataChunk[1].hi = ((__global const uint8* restrict)GBlock)[4 * i + 3];
 			ulong DataTmp2[8];
 			blake2b_compress4xv2(DataTmp2, DataTmp, (uint64_t*)DataChunk, len, i == 7);
+			#pragma unroll
 			for (int j = 0; j<8; j++)
 				DataTmp[j] = DataTmp2[j];
-			//              DataTmp = DataTmp2;
-			//                              if(thread == 1) printf("%x %x\n",DataChunk[0].lo.s0, DataTmp[0].x);;
 		}
-#pragma unroll
+		#pragma unroll
 		for (int i = 0; i<2; i++)
-			a[thread * 2 + i] = as_uint2(DataTmp[i]);
-
+			ab[thread * 2 + i] = as_uint2(DataTmp[i]);
 	}
-	if (thread == 0)
-		printf(" ");
+
 
 }
